@@ -1,0 +1,125 @@
+TASK 1 — Roles
+bashsudo groupadd sysadm
+sudo groupadd cacheadm
+
+sudo vi /etc/sudoers.d/sysadm
+i → paste → Esc → :wq → Enter
+%sysadm ALL=(ALL) NOPASSWD: /bin/systemctl
+bashsudo chmod 440 /etc/sudoers.d/sysadm
+sudo cp /etc/sudoers.d/sysadm /home/kbtu/sysadm.bak
+
+sudo vi /etc/sudoers.d/cacheadm
+i → paste → Esc → :wq → Enter
+%cacheadm ALL=(ALL) NOPASSWD: /usr/bin/podman exec redis redis-cli
+bashsudo chmod 440 /etc/sudoers.d/cacheadm
+sudo cp /etc/sudoers.d/cacheadm /home/kbtu/cacheadm.bak
+
+TASK 3 — Run Redis first (image pulls while you do Task 2)
+bashsudo mkdir -p /var/db/redis-data
+sudo chown 999:999 /var/db/redis-data
+sudo chmod 700 /var/db/redis-data
+
+sudo podman run -d --name redis --network host --memory 256m --memory-swap 256m --cpus 0.5 -v /var/db/redis-data:/data:Z docker.io/library/redis:alpine
+
+sudo vi /etc/systemd/system/container-redis.service
+i → paste → Esc → :wq → Enter
+[Unit]
+Description=Redis Container
+After=network.target
+
+[Service]
+Restart=always
+ExecStart=/usr/bin/podman start -a redis
+ExecStop=/usr/bin/podman stop redis
+
+[Install]
+WantedBy=multi-user.target
+bashsudo cp /etc/systemd/system/container-redis.service /home/kbtu/container-redis.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now container-redis
+
+# Verify
+sudo podman exec redis redis-cli ping
+
+TASK 2 — Secure storage + backup + audit
+bashsudo mkdir -p /var/backups/redis
+
+sudo vi /usr/local/bin/backup-redis.sh
+i → paste → Esc → :wq → Enter
+bash#!/bin/bash
+BACKUP_DIR=/var/backups/redis
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+mkdir -p "$BACKUP_DIR"
+cp /var/db/redis-data/dump.rdb "$BACKUP_DIR/dump-${TIMESTAMP}.rdb"
+echo "Backup done"
+bashsudo chmod 750 /usr/local/bin/backup-redis.sh
+sudo chown root:sysadm /usr/local/bin/backup-redis.sh
+sudo cp /usr/local/bin/backup-redis.sh /home/kbtu/backup-redis.sh
+
+sudo vi /etc/cron.d/redis-backup
+i → paste → Esc → :wq → Enter
+0 2 * * * root /usr/local/bin/backup-redis.sh
+bashsudo cp /etc/cron.d/redis-backup /home/kbtu/redis-backup.bak
+
+sudo vi /etc/audit/rules.d/redis-backup.rules
+i → paste → Esc → :wq → Enter
+-w /usr/local/bin/backup-redis.sh -p wa -k redis-backup-tamper
+-w /etc/cron.d/redis-backup -p wa -k redis-backup-tamper
+bashsudo cp /etc/audit/rules.d/redis-backup.rules /home/kbtu/redis-backup.rules
+sudo augenrules --load
+sudo systemctl enable --now auditd
+
+TASK 4 — Health check
+bashsudo vi /usr/local/bin/redis-healthcheck.sh
+i → paste → Esc → :wq → Enter
+bash#!/bin/bash
+if ! sudo podman exec redis redis-cli ping | grep -q PONG; then
+  logger -t redis-healthcheck "Redis not responding - restarting"
+  sudo podman restart redis
+else
+  logger -t redis-healthcheck "Redis healthy"
+fi
+bashsudo chmod +x /usr/local/bin/redis-healthcheck.sh
+sudo cp /usr/local/bin/redis-healthcheck.sh /home/kbtu/redis-healthcheck.sh
+
+sudo vi /etc/systemd/system/redis-healthcheck.service
+i → paste → Esc → :wq → Enter
+[Unit]
+Description=Redis Health Check
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/redis-healthcheck.sh
+bashsudo cp /etc/systemd/system/redis-healthcheck.service /home/kbtu/redis-healthcheck.service
+
+sudo vi /etc/systemd/system/redis-healthcheck.timer
+i → paste → Esc → :wq → Enter
+[Unit]
+Description=Redis Health Check Timer
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+[Install]
+WantedBy=timers.target
+bashsudo cp /etc/systemd/system/redis-healthcheck.timer /home/kbtu/redis-healthcheck.timer
+sudo systemctl daemon-reload
+sudo systemctl enable --now redis-healthcheck.timer
+
+TASK 5 — nftables LAST
+bashsudo vi /etc/nftables.conf
+i → paste → Esc → :wq → Enter
+#!/usr/sbin/nft -f
+flush ruleset
+table inet filter {
+  chain input {
+    type filter hook input priority 0;
+    ct state established,related accept
+    iif "lo" accept
+    tcp dport { 22, 4200 } accept
+    drop
+  }
+  chain forward { type filter hook forward priority 0; }
+  chain output { type filter hook output priority 0; }
+}
+bashsudo cp /etc/nftables.conf /home/kbtu/nftables.conf
+sudo nft -f /etc/nftables.conf
+sudo systemctl enable nftables
