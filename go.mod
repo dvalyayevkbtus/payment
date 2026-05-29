@@ -1,19 +1,19 @@
-TASK 1 — Roles
-Bash
+TASK 1
+
 sudo groupadd sysadm
 sudo groupadd dbops
 
 sudo vi /etc/sudoers.d/sysadm
 
 %sysadm ALL=(ALL) NOPASSWD: /bin/systemctl
-Bash
+
 sudo chmod 440 /etc/sudoers.d/sysadm
 sudo cp /etc/sudoers.d/sysadm /home/kbtu/sysadm.bak
 
 sudo vi /etc/sudoers.d/dbops
 
 %dbops ALL=(ALL) NOPASSWD: /usr/bin/podman exec mysql *
-Bash
+
 sudo chmod 440 /etc/sudoers.d/dbops
 sudo cp /etc/sudoers.d/dbops /home/kbtu/dbops.bak
 
@@ -92,7 +92,7 @@ if ! sudo podman exec mysql mysqladmin -u root -pStrongPassword123 ping | grep -
 else
   logger -t mysql-healthcheck "MySQL healthy"
 fi
-=
+
 sudo chmod +x /usr/local/bin/mysql-healthcheck.sh
 sudo cp /usr/local/bin/mysql-healthcheck.sh /home/kbtu/mysql-healthcheck.sh
 
