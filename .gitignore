@@ -1,38 +1,37 @@
+TASK 1:
 
-TASK 1 — Roles
-bash
 sudo groupadd sysadm
 sudo groupadd cacheadm
 
 sudo vi /etc/sudoers.d/sysadm
-i → paste → Esc → :wq → Enter
+
 %sysadm ALL=(ALL) NOPASSWD: /bin/systemctl
-bash
+
 sudo chmod 440 /etc/sudoers.d/sysadm
 sudo cp /etc/sudoers.d/sysadm /home/kbtu/sysadm.bak
 
 sudo vi /etc/sudoers.d/cacheadm
-i → paste → Esc → :wq → Enter
+
 %cacheadm ALL=(ALL) NOPASSWD: /usr/bin/podman exec redis redis-cli
-bash
+
 sudo chmod 440 /etc/sudoers.d/cacheadm
 sudo cp /etc/sudoers.d/cacheadm /home/kbtu/cacheadm.bak
-TASK 2 — Secure storage + backup + audit
-bash
+
+TASK 2:
+
 sudo mkdir -p /var/db/redis-data /var/backups/redis
 sudo chown 999:999 /var/db/redis-data
 sudo chmod 700 /var/db/redis-data
 
 sudo vi /usr/local/bin/backup-redis.sh
-i → paste → Esc → :wq → Enter
-bash
+
 #!/bin/bash
 BACKUP_DIR=/var/backups/redis
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 mkdir -p "$BACKUP_DIR"
 cp /var/db/redis-data/dump.rdb "$BACKUP_DIR/dump-${TIMESTAMP}.rdb"
 echo "Backup done"
-bash
+
 sudo chmod 750 /usr/local/bin/backup-redis.sh
 sudo chown root:sysadm /usr/local/bin/backup-redis.sh
 sudo cp /usr/local/bin/backup-redis.sh /home/kbtu/backup-redis.sh
@@ -40,14 +39,14 @@ sudo cp /usr/local/bin/backup-redis.sh /home/kbtu/backup-redis.sh
 sudo vi /etc/cron.d/redis-backup
 i → paste → Esc → :wq → Enter
 0 2 * * * root /usr/local/bin/backup-redis.sh
-bash
+
 sudo cp /etc/cron.d/redis-backup /home/kbtu/redis-backup.bak
 
 sudo vi /etc/audit/rules.d/redis-backup.rules
-i → paste → Esc → :wq → Enter
+
 -w /usr/local/bin/backup-redis.sh -p wa -k redis-backup-tamper
 -w /etc/cron.d/redis-backup -p wa -k redis-backup-tamper
-bash
+
 sudo cp /etc/audit/rules.d/redis-backup.rules /home/kbtu/redis-backup.rules
 sudo augenrules --load
 sudo systemctl enable --now auditd
@@ -62,9 +61,9 @@ sudo podman run -d \
   --cpus 0.5 \
   -v /var/db/redis-data:/data:Z \
   docker.io/library/redis:alpine
-bash
+
 sudo vi /etc/systemd/system/container-redis.service
-i → paste → Esc → :wq → Enter
+
 [Unit]
 Description=Redis Container
 After=network.target
@@ -82,11 +81,12 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now container-redis
 
 sudo podman exec redis redis-cli ping
-TASK 4 — Health check
-bash
+
+TASK 4:
+
 sudo vi /usr/local/bin/redis-healthcheck.sh
 i → paste → Esc → :wq → Enter
-bash
+
 #!/bin/bash
 if ! sudo podman exec redis redis-cli ping | grep -q PONG; then
   logger -t redis-healthcheck "Redis not responding - restarting"
@@ -94,12 +94,12 @@ if ! sudo podman exec redis redis-cli ping | grep -q PONG; then
 else
   logger -t redis-healthcheck "Redis healthy"
 fi
-bash
+
 sudo chmod +x /usr/local/bin/redis-healthcheck.sh
 sudo cp /usr/local/bin/redis-healthcheck.sh /home/kbtu/redis-healthcheck.sh
 
 sudo vi /etc/systemd/system/redis-healthcheck.service
-i → paste → Esc → :wq → Enter
+
 [Unit]
 Description=Redis Health Check
 [Service]
@@ -109,7 +109,7 @@ bash
 sudo cp /etc/systemd/system/redis-healthcheck.service /home/kbtu/redis-healthcheck.service
 
 sudo vi /etc/systemd/system/redis-healthcheck.timer
-i → paste → Esc → :wq → Enter
+
 [Unit]
 Description=Redis Health Check Timer
 [Timer]
@@ -117,14 +117,15 @@ OnBootSec=2min
 OnUnitActiveSec=1min
 [Install]
 WantedBy=timers.target
-bash
+
 sudo cp /etc/systemd/system/redis-healthcheck.timer /home/kbtu/redis-healthcheck.timer
 sudo systemctl daemon-reload
 sudo systemctl enable --now redis-healthcheck.timer
-TASK 5 — nftables LAST
-bash
+
+TASK 5:
+
 sudo vi /etc/nftables.conf
-i → paste → Esc → :wq → Enter
+
 #!/usr/sbin/nft -f
 flush ruleset
 table inet filter {
@@ -138,7 +139,7 @@ table inet filter {
   chain forward { type filter hook forward priority 0; }
   chain output { type filter hook output priority 0; }
 }
-bash
+
 sudo cp /etc/nftables.conf /home/kbtu/nftables.conf
 sudo nft -f /etc/nftables.conf
 sudo systemctl enable nftables
