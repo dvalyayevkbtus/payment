@@ -4,53 +4,49 @@ sudo groupadd sysadm
 sudo groupadd dbops
 
 sudo vi /etc/sudoers.d/sysadm
-# i → paste → Esc → :wq → Enter
-Plaintext
+
 %sysadm ALL=(ALL) NOPASSWD: /bin/systemctl
 Bash
 sudo chmod 440 /etc/sudoers.d/sysadm
 sudo cp /etc/sudoers.d/sysadm /home/kbtu/sysadm.bak
 
 sudo vi /etc/sudoers.d/dbops
-# i → paste → Esc → :wq → Enter
-Plaintext
+
 %dbops ALL=(ALL) NOPASSWD: /usr/bin/podman exec mysql *
 Bash
 sudo chmod 440 /etc/sudoers.d/dbops
 sudo cp /etc/sudoers.d/dbops /home/kbtu/dbops.bak
-TASK 2 — Secure storage + backup + audit
-Bash
+
+TASK 2
+
 sudo mkdir -p /var/db/mysql-data /var/backups/mysql
 sudo chown 999:999 /var/db/mysql-data
 sudo chmod 700 /var/db/mysql-data
 
 sudo vi /usr/local/bin/backup-mysql.sh
-# i → paste → Esc → :wq → Enter
-Bash
+
 #!/bin/bash
 BACKUP_DIR=/var/backups/mysql
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 mkdir -p "$BACKUP_DIR"
 sudo podman exec mysql mysqldump -u root -pStrongPassword123 --all-databases > "$BACKUP_DIR/backup-${TIMESTAMP}.sql"
 echo "Backup done"
-Bash
+
 sudo chmod 750 /usr/local/bin/backup-mysql.sh
 sudo chown root:sysadm /usr/local/bin/backup-mysql.sh
 sudo cp /usr/local/bin/backup-mysql.sh /home/kbtu/backup-mysql.sh
 
 sudo vi /etc/cron.d/mysql-backup
-# i → paste → Esc → :wq → Enter
-Plaintext
+
 0 2 * * * root /usr/local/bin/backup-mysql.sh
-Bash
+
 sudo cp /etc/cron.d/mysql-backup /home/kbtu/mysql-backup.bak
 
 sudo vi /etc/audit/rules.d/mysql-backup.rules
-# i → paste → Esc → :wq → Enter
-Plaintext
+
 -w /usr/local/bin/backup-mysql.sh -p wa -k mysql-backup-tamper
 -w /etc/cron.d/mysql-backup -p wa -k mysql-backup-tamper
-Bash
+
 sudo cp /etc/audit/rules.d/mysql-backup.rules /home/kbtu/mysql-backup.rules
 sudo augenrules --load
 sudo systemctl enable --now auditd
