@@ -33,14 +33,22 @@ COPY --from=builder /app/node_modules ./node_modules
 USER appuser
 EXPOSE 4200
 CMD ["node", "dist/server.js"]
-bashsudo cp ~/payment/Containerfile /home/kbtu/Containerfile
+
+sudo cp ~/payment/Containerfile /home/kbtu/Containerfile
 
 sudo podman build --no-cache --security-opt no-new-privileges -t payment:hardened ~/payment/
 
 sudo podman images payment
 
 TASK 3:
-sudo podman run -d --name payment-instance --network host --memory 256m --memory-swap 256m --cpus 0.5 --security-opt no-new-privileges --cap-drop ALL payment:hardened
+sudo podman run -d \
+  --name payment-instance \
+  --network host \
+  --memory 256m \
+  --memory-swap 256m \
+  --cpus 0.5 \
+  --security-opt no-new-privileges \
+  --cap-drop ALL payment:hardened \
 
 sleep 5
 curl -I http://localhost:4200/
@@ -50,10 +58,10 @@ sudo podman tag payment:hardened docker.io/YOURUSERNAME/payment:hardened
 sudo podman push docker.io/YOURUSERNAME/payment:hardened
 
 TASK 4:
-bashsudo dnf install -y audit
+sudo dnf install -y audit
 
 sudo vi /usr/local/bin/build-pipeline.sh
-i → paste → Esc → :wq → Enter
+
 bash#!/bin/bash
 set -e
 TIMESTAMP=$(date +%s)
@@ -82,14 +90,16 @@ sudo podman rm -f "$CONTAINER_NAME"
 rm -rf "$WORK_DIR"
 
 echo "Pipeline complete"
-bashsudo chown root:operations /usr/local/bin/build-pipeline.sh
+
+sudo chown root:operations /usr/local/bin/build-pipeline.sh
 sudo chmod 750 /usr/local/bin/build-pipeline.sh
 sudo cp /usr/local/bin/build-pipeline.sh /home/kbtu/build-pipeline.sh
 
 sudo vi /etc/sudoers.d/operations
-i → paste → Esc → :wq → Enter
+
 %operations ALL=(ALL) NOPASSWD: /usr/local/bin/build-pipeline.sh
-bashsudo chmod 440 /etc/sudoers.d/operations
+
+sudo chmod 440 /etc/sudoers.d/operations
 sudo cp /etc/sudoers.d/operations /home/kbtu/operations.bak
 
 sudo vi /etc/audit/rules.d/pipeline.rules
@@ -115,6 +125,7 @@ table inet filter {
   chain forward { type filter hook forward priority 0; }
   chain output { type filter hook output priority 0; }
 }
-bashsudo cp /etc/nftables.conf /home/kbtu/nftables.conf
+
+sudo cp /etc/nftables.conf /home/kbtu/nftables.conf
 sudo nft -f /etc/nftables.conf
 sudo systemctl enable nftables
