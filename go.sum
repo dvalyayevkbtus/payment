@@ -1,117 +1,74 @@
-TASK 1 — Roles
-bashsudo groupadd sysadm
+TASK 1
+
+sudo groupadd sysadm
 sudo groupadd operations
-
 sudo vi /etc/sudoers.d/sysadm
-
+Plaintext
 %sysadm ALL=(ALL) NOPASSWD: /bin/systemctl
+
 sudo chmod 440 /etc/sudoers.d/sysadm
 sudo cp /etc/sudoers.d/sysadm /home/kbtu/sysadm.bak
-
-TASK 2:
-sudo dnf install -y git podman
-
-git clone https://github.com/dvalyayevkbtu/payment ~/payment
-cd ~/payment
-cat README.md
-
-sudo vi ~/payment/Containerfile
-
-FROM node:20-alpine AS builder
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --only=production
-COPY . .
-RUN npm run build --if-present
-
-FROM node:20-alpine
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
-RUN find / -perm /6000 -type f -exec chmod a-s {} \; 2>/dev/null || true
-WORKDIR /app
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-USER appuser
-EXPOSE 4200
-CMD ["node", "dist/server.js"]
-
-sudo cp ~/payment/Containerfile /home/kbtu/Containerfile
-
-sudo podman build --no-cache --security-opt no-new-privileges -t payment:hardened ~/payment/
-
-sudo podman images payment
-
-TASK 3:
-sudo podman run -d \
-  --name payment-instance \
-  --network host \
-  --memory 256m \
-  --memory-swap 256m \
-  --cpus 0.5 \
-  --security-opt no-new-privileges \
-  --cap-drop ALL payment:hardened \
-
-sleep 5
-curl -I http://localhost:4200/
-sudo podman ps
-sudo podman login docker.io
-sudo podman tag payment:hardened docker.io/YOURUSERNAME/payment:hardened
-sudo podman push docker.io/YOURUSERNAME/payment:hardened
-
-TASK 4:
-sudo dnf install -y audit
-
-sudo vi /usr/local/bin/build-pipeline.sh
-
-bash#!/bin/bash
-set -e
-TIMESTAMP=$(date +%s)
-CONTAINER_NAME="payment-test-${TIMESTAMP}"
-WORK_DIR="/tmp/payment-build-${TIMESTAMP}"
-IMAGE_NAME="payment:hardened"
-
-# Step 1: git clone
-git clone https://github.com/dvalyayevkbtu/payment "$WORK_DIR"
-
-# Step 2: build
-cd "$WORK_DIR"
-sudo podman build --no-cache --security-opt no-new-privileges -t "$IMAGE_NAME" .
-
-# Step 3: start
-sudo podman run -d --name "$CONTAINER_NAME" --network host --memory 256m --cpus 0.5 --security-opt no-new-privileges "$IMAGE_NAME"
-
-# Step 4: check
-sleep 5
-curl -sf --max-time 10 http://localhost:4200 && echo "OK" || echo "FAILED"
-
-# Step 5: delete container
-sudo podman rm -f "$CONTAINER_NAME"
-
-# Step 6: delete repo
-rm -rf "$WORK_DIR"
-
-echo "Pipeline complete"
-
-sudo chown root:operations /usr/local/bin/build-pipeline.sh
-sudo chmod 750 /usr/local/bin/build-pipeline.sh
-sudo cp /usr/local/bin/build-pipeline.sh /home/kbtu/build-pipeline.sh
-
 sudo vi /etc/sudoers.d/operations
-
+Plaintext
 %operations ALL=(ALL) NOPASSWD: /usr/local/bin/build-pipeline.sh
 
 sudo chmod 440 /etc/sudoers.d/operations
 sudo cp /etc/sudoers.d/operations /home/kbtu/operations.bak
 
-sudo vi /etc/audit/rules.d/pipeline.rules
+TASK 2 & 3
+Bash
+cd /home/kbtu/
+git clone https://github.com/dvalyayevkbtu/payment.git
+cd payment
+sudo podman build -t payment-service:latest .
+sudo podman run -d \
+--name payment-app \
+--memory 256m \
+--memory-swap 256m \
+--cpus 0.5 -p 8080:8080 payment-service:latest \
+curl http://localhost:8080 \
+sudo podman push payment-service:latest docker://docker.io/yourusername/payment-service:latest
 
--a always,exit -F path=/usr/local/bin/build-pipeline.sh -F perm=x -k pipeline-execution
-bashsudo cp /etc/audit/rules.d/pipeline.rules /home/kbtu/pipeline.rules
+TASK 4
+
+sudo vi /usr/local/bin/build-pipeline.sh
+
+#!/bin/bash
+cd /tmp
+rm -rf /tmp/payment
+git clone https://github.com/dvalyayevkbtu/payment.git
+cd payment
+podman build -t payment-service:latest .
+logger -t payment-pipeline "Audit: Container image built successfully"
+podman run -d --name payment-test --memory 256m --memory-swap 256m --cpus 0.5 -p 8080:8080 payment-service:latest
+logger -t payment-pipeline "Audit: Container started"
+sleep 3
+if curl -s http://localhost:8080 > /dev/null; then
+    logger -t payment-pipeline "Audit: Service check PASSED"
+else
+    logger -t payment-pipeline "Audit: Service check FAILED"
+fi
+podman stop payment-test
+podman rm payment-test
+logger -t payment-pipeline "Audit: Container cleaned up and deleted"
+cd /tmp
+rm -rf /tmp/payment
+logger -t payment-pipeline "Audit: Local Git repository purged"
+
+sudo chmod 750 /usr/local/bin/build-pipeline.sh
+sudo chown root:operations /usr/local/bin/build-pipeline.sh
+sudo cp /usr/local/bin/build-pipeline.sh /home/kbtu/build-pipeline.sh
+sudo vi /etc/audit/rules.d/payment-audit.rules
+
+-w /usr/local/bin/build-pipeline.sh -p wa -k payment-pipeline-tamper
+
+sudo cp /etc/audit/rules.d/payment-audit.rules /home/kbtu/payment-audit.rules
 sudo augenrules --load
-sudo systemctl enable --now auditd
 
-TASK 5:
+TASK 5
+
 sudo vi /etc/nftables.conf
-
+Plaintext
 #!/usr/sbin/nft -f
 flush ruleset
 table inet filter {
@@ -128,4 +85,4 @@ table inet filter {
 
 sudo cp /etc/nftables.conf /home/kbtu/nftables.conf
 sudo nft -f /etc/nftables.conf
-sudo systemctl enable nftables
+sudo systemctl enable --now nftables
